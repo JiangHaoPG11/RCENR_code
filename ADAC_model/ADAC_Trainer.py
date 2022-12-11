@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from AnchorKG_model.AnchorKG import *
+from AnchorKG_model_bak.AnchorKG import *
 from tqdm import tqdm
 from torch.autograd import no_grad
 from utils.measure import *
@@ -8,7 +8,7 @@ from numpy import *
 
 
 class Trainer():
-    def __init__(self, args, ADAC_model, optimizer_agent, data):
+    def __init__(self, args, ADAC_model, optimizer_agent, data, device):
         self.args = args
         self.ADAC_model = ADAC_model
         self.optimizer_agent = optimizer_agent
@@ -27,32 +27,45 @@ class Trainer():
         self.label_test = data[-2]
         self.bound_test = data[-1]
 
+        self.device = device
+
     def cal_auc(self, score, label):
-        rec_loss = F.cross_entropy(score, torch.argmax(label, dim=1))
+        rec_loss = F.cross_entropy(score, torch.argmax(label.to(self.device), dim=1))
         try:
             rec_auc = roc_auc_score(label.cpu().numpy(), F.softmax(score.cpu(), dim=1).detach().numpy())
         except ValueError:
             rec_auc = 0.5
         return rec_loss, rec_auc
 
-    def optimize_agent(self, batch_rewards, q_values_steps, act_probs_steps, path_step_loss, meta_step_loss, all_loss):
+    def optimize_agent(self, batch_rewards, q_values_steps, act_probs_steps, path_step_loss, meta_step_loss, rec_loss):
         all_loss_list = []
+        demp_loss_list = []
         for i in range(len(batch_rewards)):
             batch_reward = batch_rewards[i]
             q_values_step = q_values_steps[i]
             act_probs_step = act_probs_steps[i]
             critic_loss, actor_loss = self.ADAC_model.step_update(act_probs_step, q_values_step, batch_reward)
+
+            print('actor_loss：{}'.format(actor_loss.mean()))
+            print('critic_loss：{}'.format(critic_loss.mean()))
+            print('path_step_loss：{}'.format(path_step_loss[i].mean()))
+            print('meta_step_loss：{}'.format(meta_step_loss[i].mean()))
+            print('rec_loss：{}'.format(rec_loss))
+            print('---------')
             all_loss_list.append(actor_loss.mean())
             all_loss_list.append(critic_loss.mean())
-            all_loss_list.append(path_step_loss[i].mean())
-            all_loss_list.append(meta_step_loss[i].mean())
+            demp_loss_list.append(path_step_loss[i].mean())
+            demp_loss_list.append(meta_step_loss[i].mean())
 
+        all_loss_list.append(rec_loss)
+        all_loss_list.append(torch.stack(demp_loss_list).mean())
         self.optimizer_agent.zero_grad()
         if all_loss_list != []:
             loss = torch.stack(all_loss_list).sum()  # sum up all the loss
             loss.backward()
             self.optimizer_agent.step()
-            #all_loss = all_loss + loss.data
+        #all_loss = all_loss + loss.data
+        print(loss)
         return loss
 
     def _train_epoch(self):
@@ -68,13 +81,12 @@ class Trainer():
             act_probs_steps, q_values_steps, total_rewards, \
             path_nodes, path_relations, score, path_step_loss, meta_step_loss = self.ADAC_model(user_index, candidate_newindex, user_clicked_newindex)
             score = score.view(self.args.batch_size, -1)
-            _, rec_auc = self.cal_auc(score, label)
-            agent_loss = self.optimize_agent(total_rewards, q_values_steps, act_probs_steps, path_step_loss, meta_step_loss, all_loss)
-            all_loss += agent_loss
-            all_loss_list.append(all_loss.cpu().item())
+            rec_loss, rec_auc = self.cal_auc(score, label)
+            agent_loss = self.optimize_agent(total_rewards, q_values_steps, act_probs_steps, path_step_loss, meta_step_loss, rec_loss )
+            all_loss_list.append(agent_loss.cpu().item())
             auc_list.append(rec_auc)
             pbar.update(self.args.batch_size)
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
         pbar.close()
         return mean(all_loss_list), mean(auc_list)
 
@@ -124,18 +136,21 @@ class Trainer():
         pbar = tqdm(total= self.testdata_size)
         self.ADAC_model.eval()
         pred_label_list = []
+        total_path_num = 0
         with no_grad():
             for data in self.test_dataloader:
                 candidate_newindex, user_index, user_clicked_newindex = data
-                _, _, best_score, best_path = self.ADAC_model.test(user_index, candidate_newindex, user_clicked_newindex)
+                _, path_num, _, best_score, best_path = self.ADAC_model.test(user_index, candidate_newindex, user_clicked_newindex)
                 best_score = best_score.view(self.args.batch_size, -1)
+                total_path_num += path_num
                 pred_label_list.extend(best_score.cpu().numpy())
                 pbar.update(self.args.batch_size)
+
             pred_label_list = np.vstack(pred_label_list)
             pbar.close()
         test_AUC, test_MRR, test_nDCG5, test_nDCG10 = evaluate(pred_label_list, self.label_test, self.bound_test)
-        print("test_AUC = %.4lf, test_MRR = %.4lf, test_nDCG5 = %.4lf, test_nDCG10 = %.4lf" %
-              (test_AUC, test_MRR, test_nDCG5, test_nDCG10))
+        print("test_AUC = %.4lf, test_MRR = %.4lf, test_nDCG5 = %.4lf, test_nDCG10 = %.4lf, path_num = %.4lf" %
+              (test_AUC, test_MRR, test_nDCG5, test_nDCG10, total_path_num))
 
 
 

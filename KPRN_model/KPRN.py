@@ -13,14 +13,12 @@ class KPRN(nn.Module):
         super(KPRN, self).__init__()
         self._parse_args(args)
         self.args = args
-
-        news_title_embedding = news_title_embedding.tolist()
-        news_title_embedding.append(np.random.normal(-0.1, 0.1, 768))
-        self.news_title_embedding = nn.Embedding.from_pretrained(torch.FloatTensor(news_title_embedding))
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.entity_embedding = nn.Embedding.from_pretrained(entity_embedding)
         self.relation_embedding = nn.Embedding.from_pretrained(relation_embedding)
-        self.user_embedding = nn.Embedding(args.user_size, self.embedding_dim)
+        self.user_embedding = nn.Embedding(self.args.user_size, self.embedding_dim)
+        self.news_embedding = nn.Embedding(self.args.title_num, self.embedding_dim)
 
         self.entity_adj = entity_adj
         self.relation_adj = relation_adj
@@ -31,28 +29,27 @@ class KPRN(nn.Module):
         self.total_type_index = total_type_index
 
         self.transform_matrix = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
-        self.news_to_entity = nn.Linear(self.title_dim, self.embedding_dim, bias=True)
+        self.news_to_entity = nn.Linear(self.embedding_dim, self.embedding_dim, bias=True)
         self.type_embedding = nn.Embedding(3, self.embedding_dim) # user, news, entity
 
         self.elu = nn.ELU()
-        self.news_compress_1 = nn.Linear(args.title_size, args.embedding_size)
-        self.news_compress_2 = nn.Linear(args.embedding_size, args.embedding_size)
 
-        self.path_score_l1 = nn.Linear(args.embedding_size, 16)
+        self.path_score_l1 = nn.Linear(self.args.embedding_size, 16)
         self.path_score_l2 = nn.Linear(16, 1)
-        self.lstm = {}
-        for i in range(self.max_path):
-            self.lstm[i] = nn.LSTM(self.embedding_dim * 3, self.embedding_dim, self.kprn_path_long, batch_first = True)
 
+        self.lstm = {}
+        for i in range(self.kprn_max_path):
+            self.lstm[i] = nn.LSTM(self.embedding_dim * 3, self.embedding_dim, self.kprn_path_long, batch_first = True).to(self.device)
+
+    
     def _parse_args(self, args):
         self.embedding_dim = args.embedding_size
         self.title_dim = args.title_size
         self.kprn_path_long = args.kprn_path_long
-        self.max_path = args.kprn_max_path
+        self.kprn_max_path = args.kprn_max_path
 
     def trans_news_embedding(self, news_index):
-        trans_news_embedding = self.news_title_embedding(news_index)
-        trans_news_embedding = torch.tanh(self.news_compress_2(self.elu(self.news_compress_1(trans_news_embedding))))
+        trans_news_embedding = self.news_embedding(news_index)
         return trans_news_embedding
 
     def get_news_entities_batch(self, newsids):
@@ -101,30 +98,40 @@ class KPRN(nn.Module):
         relations_embedding_list = self.relation_embedding(batch_relations_index)
         return node_embedding_list, type_embedding_list, relations_embedding_list
 
-    def forward(self, candidate_newindex, user_index):
+    def forward(self, candidate_newsindex, user_index):
         batch_path_index, batch_type_index, batch_relations_index = self.get_batch_path(user_index)
-        for j in range(candidate_newindex.shape[1]):
+        batch_path_index = batch_path_index.to(self.device)
+        batch_type_index = batch_type_index.to(self.device)
+        batch_relations_index = batch_relations_index.to(self.device)
+
+        news_embedding = self.news_embedding(candidate_newsindex.to(self.device))
+        user_embedding = self.user_embedding(user_index.to(self.device)).unsqueeze(1)
+
+        total_output = None
+        total_score = None
+        for j in range(candidate_newsindex.shape[1]):
             batch_path_index_select = batch_path_index[:, j, :, :]
             batch_type_index_select = batch_type_index[:, j, :, :]
             batch_relations_index_select = batch_relations_index[:, j, :, :]
-            for i in range(self.max_path):
+            for i in range(self.kprn_max_path):
                 node_embedding, type_embedding, relation_embedding = self.get_batch_embedding(
                     batch_path_index_select[:, i, ],
                     batch_type_index_select[:, i, ],
                     batch_relations_index_select[:, i, ])
-                input = torch.cat([node_embedding, type_embedding, relation_embedding], dim = -1)
-                output, (_, _) = self.lstm[i](input)
-                output = output[:, i, :]
-                output = output.unsqueeze(1)
-                if i == 0:
+                input1 = torch.cat([node_embedding, type_embedding, relation_embedding], dim=-1).to(self.device)
+                output, (_, _) = self.lstm[i](input1)
+                output = output[:, i, :].unsqueeze(1)
+                if total_output == None:
                     total_output = output
                 else:
-                    total_output = torch.cat([total_output, output], dim = 1)
-            path_score = self.path_score_l2(torch.relu(self.path_score_l1(total_output)))
-            score = torch.sum(path_score, dim = 1)
-            if j == 0:
+                    total_output = torch.cat([total_output, output], dim=1)
+            path_score = torch.sigmoid(self.path_score_l2(torch.relu(self.path_score_l1(total_output))))
+            score = torch.sum(path_score, dim=1)
+            if total_score == None:
                 total_score = score
             else:
-                total_score = torch.cat([total_score, score], dim = -1)
-        total_score = F.softmax(total_score, dim=-1)
-        return total_score
+                total_score = torch.cat([total_score, score], dim=-1)
+
+        emb_score = torch.sigmoid(torch.sum(news_embedding * user_embedding, dim=-1))
+        score = emb_score + total_score
+        return score

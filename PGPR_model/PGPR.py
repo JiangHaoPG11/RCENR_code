@@ -77,9 +77,11 @@ class PGPR(torch.nn.Module):
         self.news_entity_dict = news_entity_dict
         self.entity_news_dict = entity_news_dict
 
-
+        print(entity_adj)
         self.entity_adj = entity_adj
         self.relation_adj = relation_adj
+        self.entity_adj, self.relation_adj = self._reconstruct_kg_adj()
+
         self.entity_dict = entity_dict
 
         self.MAX_DEPTH = 3
@@ -89,8 +91,8 @@ class PGPR(torch.nn.Module):
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax()
 
-        news_title_embedding = news_title_embedding.tolist()
-        news_title_embedding.append(np.random.normal(-0.1, 0.1, 768))
+        #news_title_embedding = news_title_embedding.tolist()
+        #news_title_embedding.append(np.random.normal(-0.1, 0.1, 768))
         self.news_title_embedding = nn.Embedding.from_pretrained(torch.FloatTensor(news_title_embedding))
         self.user_embedding = nn.Embedding(self.args.user_size, self.args.embedding_size)
         self.entity_embedding = nn.Embedding.from_pretrained(entity_embedding)
@@ -104,6 +106,18 @@ class PGPR(torch.nn.Module):
         self.policy_net = Net(self.entity_dict, entity_embedding, self.device)
         self.target_net = Net(self.entity_dict, entity_embedding, self.device)
         self.state_gen = KGState(self.args.embedding_size)
+
+    def _reconstruct_kg_adj(self):
+        entity_adj_update = {}
+        relation_adj_update = {}
+        for key, value in self.entity_adj.items():
+            if key != 0:
+                temp = value.pop(0)
+                if type(temp) == int:
+                    temp = [temp]
+                entity_adj_update[key] = temp
+                relation_adj_update[key] = self.relation_adj[key][:len(temp)]
+        return entity_adj_update, relation_adj_update
 
     def trans_news_embedding(self, news_index):
         trans_news_embedding = self.news_title_embedding(news_index)  # bz * 5, news_entity_num, dim
@@ -124,7 +138,14 @@ class PGPR(torch.nn.Module):
         relations = []
         if entity_id.shape[1] == 1:
             for i in range(len(entity_id)):
-                news.append(self.entity_news_dict[int(entity_id[i])])
+                if int(entity_id[i]) == 0:
+                    news.append([(self.args.title_num - 1) for k in range(20)])
+                elif len(self.entity_news_dict[int(entity_id[i])]) < 20:
+                    temp = self.entity_news_dict[int(entity_id[i])]
+                    temp.extend([self.args.title_num - 1] * (20-len(self.entity_news_dict[int(entity_id[i])])))
+                    news.append(temp)
+                else:
+                    news.append(self.entity_news_dict[int(entity_id[i])][:20])
                 relations.append([0 for k in range(len(self.entity_news_dict[int(entity_id[i])]))])
             news = torch.LongTensor(news).to(self.device)
             relations = torch.LongTensor(relations).to(self.device)
@@ -133,8 +154,15 @@ class PGPR(torch.nn.Module):
                 news_single = []
                 relations_single = []
                 for entity in entity_id[i]:
-                    news_single.append(self.entity_news_dict[int(entity)])
-                    relations_single.append([0 for k in range(len(self.entity_news_dict[int(entity)]))])
+                    if int(entity) == 0:
+                        news_single.append([(self.args.title_num - 1)for k in range(20)])
+                    elif len(self.entity_news_dict[int(entity)]) < 20:
+                        temp = self.entity_news_dict[int(entity)]
+                        temp.extend([self.args.title_num - 1] * (20 - len(self.entity_news_dict[int(entity)])))
+                        news_single.append(temp)
+                    else:
+                        news_single.append(self.entity_news_dict[int(entity)][:20])
+                    relations_single.append([0 for k in range(20)])
                 news.append(news_single)
                 relations.append(relations_single)
             news = torch.LongTensor(news).to(self.device)
@@ -154,15 +182,26 @@ class PGPR(torch.nn.Module):
         target_score = target_score.to(self.device)
         return target_score
 
-    def get_best_reward(self, user_embedding, path_nodes, user_clicked_score_max):
-        curr_news_id = path_nodes[-1]
-        news_embedding = self.news_title_embedding(curr_news_id).squeeze()
+    def get_best_reward(self, candidate_newsindex, user_embedding, path_nodes, user_clicked_score_max):
+        total_path_num = 0
+        curr_node_id = path_nodes[-1]
+        curr_node_id_np = curr_node_id.detach().cpu().numpy()
+        candidate_newsindex = candidate_newsindex.detach().cpu().numpy()
+
+        for i in range(curr_node_id_np.shape[0]):
+            if candidate_newsindex[i] in curr_node_id_np[i] and candidate_newsindex[i] != self.args.title_num - 1:
+                index = np.argwhere(curr_node_id_np[i] == candidate_newsindex[i])
+                path_num = len(index)
+                total_path_num += path_num
+        print('搜索到路径：{}'.format(total_path_num))
+
+        news_embedding = self.news_title_embedding(curr_node_id).squeeze()
         news_embedding = self.tanh(self.news_compress_2(self.elu(self.news_compress_1(news_embedding))))
         user_embedding = user_embedding.unsqueeze(1).repeat(1, news_embedding.shape[1], 1)
         target_score = torch.sum(user_embedding * news_embedding, dim = -1)
         # target_score = F.softmax(target_score, dim = -1)
         target_score = torch.sigmoid(target_score / user_clicked_score_max.unsqueeze(-1).repeat(1, target_score.shape[1]))
-        return target_score
+        return target_score, total_path_num
 
     def get_news_entities_batch(self, newsids):
         news_entities = []
@@ -177,7 +216,7 @@ class PGPR(torch.nn.Module):
     def get_user_clicked_batch(self, user_clicked_index):
         clicked_relations = []
         for i in range(len(user_clicked_index)):
-            clicked_relations.append([0 for k in range(self.args.user_clicked_num)])
+            clicked_relations.append([0 for k in range(user_clicked_index.shape[1])])
         # user_clicked_news = torch.tensor(user_clicked_index).to(self.device)
         clicked_relations = torch.tensor(clicked_relations).to(self.device)
         return user_clicked_index, clicked_relations
@@ -193,8 +232,11 @@ class PGPR(torch.nn.Module):
                     next_action_id[-1].append(self.entity_adj[int(state_id_input_batch[i][j].data.cpu().numpy())])
                     next_action_r_id[-1].append(self.relation_adj[int(state_id_input_batch[i][j].data.cpu().numpy())])
                 else:
-                    next_action_id[-1].append([0 for k in range(20)])
+                    next_action_id[-1].append([int(state_id_input_batch[i][j].data.cpu().numpy()) for k in range(20)])
                     next_action_r_id[-1].append([0 for k in range(20)])
+                if len(next_action_id[-1][-1]) < 20:
+                    next_action_id[-1][-1].extend([int(state_id_input_batch[i][j].data.cpu().numpy()) for k in range(20 - len(next_action_id[-1][-1]))])
+                    next_action_r_id[-1][-1].extend([0 for k in range(20 - len(next_action_r_id[-1][-1]))])
         next_action_space_id = torch.LongTensor(next_action_id).to(self.device) # bz, d(k-hop) , 20
         next_state_space_embedding = self.entity_embedding(next_action_space_id)  # bz, d(k-hop) , 20 dim
         next_action_r_id = torch.LongTensor(next_action_r_id).to(self.device)# bz, d(k-hop) , 20, 20
@@ -295,8 +337,11 @@ class PGPR(torch.nn.Module):
             last_relation_embedding = self.relation_embedding(path_relation[-2]).squeeze()   # bz, 1, dim
             if len(user_embedding.shape) != len(curr_entity_embedding.shape):
                 user_embedding = user_embedding.unsqueeze(1).repeat(1, curr_entity_embedding.shape[1], 1)
-                last_entity_embedding = torch.flatten(last_entity_embedding.unsqueeze(2).repeat(1, 1, self.Topk[len(path_node) - 2], 1), 1, 2)
-                last_relation_embedding = torch.flatten(last_relation_embedding.unsqueeze(2).repeat(1, 1, self.Topk[len(path_node) - 2], 1), 1, 2)
+                last_entity_embedding = last_entity_embedding.unsqueeze(2)
+                last_entity_embedding = torch.flatten(last_entity_embedding.repeat(1, 1, self.Topk[len(path_node)-2], 1), 1, 2)
+                last_relation_embedding = last_relation_embedding.unsqueeze(2)
+                last_relation_embedding = torch.flatten(last_relation_embedding.repeat(1, 1, self.Topk[len(path_node)-2], 1), 1, 2)
+
             state_embedding = torch.cat([user_embedding.to(self.device), curr_entity_embedding.to(self.device), last_entity_embedding.to(self.device), last_relation_embedding.to(self.device)],dim=-1)  # bz,  d(k-hop-1), dim
         return state_embedding
 
@@ -309,7 +354,7 @@ class PGPR(torch.nn.Module):
         return path_nodes, path_relation
 
     def cal_user_clicked_score(self, user_index, user_clicked_newindex):
-        user_embedding = (self.tanh(self.user_embedding(user_index))).unsqueeze(1).repeat(1,self.args.user_clicked_num,1)
+        user_embedding = (self.tanh(self.user_embedding(user_index))).unsqueeze(1).repeat(1,user_clicked_newindex.shape[1],1)
         clicked_embedding = self.tanh(self.news_compress_2(self.elu(self.news_compress_1(self.news_title_embedding(user_clicked_newindex)))))
         user_clicked_score = torch.sum(user_embedding * clicked_embedding, dim=-1)
         user_clicked_score_max = torch.max(user_clicked_score, dim=-1).values
@@ -345,7 +390,7 @@ class PGPR(torch.nn.Module):
         
         user_index = user_index.to(self.device)
         candidate_newindex = candidate_newindex.to(self.device)
-        user_clicked_newindex = user_clicked_newindex.to(self.device)
+        user_clicked_newindex = user_clicked_newindex[:, :50].to(self.device)
 
         user_clicked_score = self.cal_user_clicked_score(user_index, user_clicked_newindex)
         candidate_newindex = torch.flatten(candidate_newindex, 0, 1)
@@ -391,9 +436,11 @@ class PGPR(torch.nn.Module):
                 path_relations.append(step_relations)
                 act_probs_steps.append(act_probs)
                 q_values_steps.append(q_values)
+
                 score = self.get_reward(user_embedding, path_nodes, user_clicked_score, done=True)
                 step_rewards.append(score.tolist())
-        rec_score = self.get_rec_score( user_embedding, news_embedding, path_nodes, path_relations, mode = "train")
+
+        rec_score = self.get_rec_score(user_embedding, news_embedding, path_nodes, path_relations, mode = "train")
         return act_probs_steps, q_values_steps, step_rewards, path_nodes, path_relations, rec_score
 
     def get_rec_score(self, user_embedding, news_embedding, path_nodes, path_relations, mode):
@@ -437,11 +484,10 @@ class PGPR(torch.nn.Module):
 
     def test(self, user_index, candidate_newindex, user_clicked_newindex):
         depth = 0
-        best_score = 0
-        best_path = 0
+
         user_index = user_index.to(self.device)
         candidate_newindex = candidate_newindex.to(self.device)
-        user_clicked_newindex = user_clicked_newindex.to(self.device)
+        user_clicked_newindex = user_clicked_newindex[ : , :50].to(self.device)
 
         # 选择用户点击新闻
         user_clicked_score = self.cal_user_clicked_score(user_index, user_clicked_newindex)
@@ -459,6 +505,7 @@ class PGPR(torch.nn.Module):
         relation_id = input_relations  # bz * 5, news_entity_num
         state_input = self.get_state_input(user_embedding, path_nodes, path_relations)  # bz, 2 * news_dim
         self.Topk = [20, 5, 1]
+
         while (depth <= self.MAX_DEPTH):
             if depth < self.MAX_DEPTH:
                 # 计算Q值和输出动作的可能性
@@ -472,22 +519,22 @@ class PGPR(torch.nn.Module):
                 actionid_lookup, action_lookup, action_rid_lookup, action_r_lookup = self.get_next_action(step_nodes)
                 action_id = actionid_lookup  # bz*5, d(1-hop)  # bz*5, d(1-hop) * d(2-hop) # bz*5, d(1-hop) * d(2-hop) * d(3-hop)
                 relation_id = action_rid_lookup  # bz*5, d(1-hop)  # bz*5, d(1-hop) * d(2-hop) # bz*5, d(1-hop) * d(2-hop) * d(3-hop)
-                action_input = self.entity_embedding(action_id) + self.relation_embedding( relation_id)  # bz*5,d(1-hop),20,dim #bz*5,d(1-hop) * d(2-hop),20,dim #bz*5,d(1-hop)*d(2-hop),20,dim
+                action_input = self.entity_embedding(action_id) + self.relation_embedding(relation_id)  # bz*5,d(1-hop),20,dim #bz*5,d(1-hop) * d(2-hop),20,dim #bz*5,d(1-hop)*d(2-hop),20,dim
                 depth += 1
             else:
-                state_input = self.get_state_input(news_embedding, path_nodes, path_relations)
                 path_last_entityid = path_nodes[-1]
                 action_id, relations_id = self.get_entities_news_batch(path_last_entityid)
-                action_input = self.trans_news_embedding(action_id) + self.relation_embedding(relations_id)
-                act_probs, q_values = self.policy_net(state_input, action_input)
-                act_probs, q_values, predict_news, step_relations = self.get_path_nodes(act_probs, q_values, action_id, relations_id, 1)
+                predict_news = torch.flatten(action_id, -2, -1)
+                predict_relation = torch.flatten(relations_id, -2, -1)
                 path_nodes.append(predict_news)
-                path_relations.append(step_relations)
-                score = self.get_best_reward(user_embedding, path_nodes, user_clicked_score)
-                best = torch.max(score, dim=-1)
-                best_score = best.values
-                best_path = best.indices
+                path_relations.append(predict_relation)
                 depth += 1
+
+        score, path_num = self.get_best_reward(candidate_newindex, user_embedding, path_nodes, user_clicked_score)
+        best = torch.max(score, dim=-1)
+        best_score = best.values
+        best_path = best.indices
+        depth += 1
         rec_score = self.get_rec_score(user_embedding, news_embedding, path_nodes, path_relations, mode="test")
-        return path_nodes, path_relations, rec_score, best_path
+        return path_num, path_nodes, path_relations, rec_score, best_path
 

@@ -16,11 +16,11 @@ class ADAC_Train_Test():
                           relation_embedding, entity_adj, relation_adj, entity_dict,
                           demo_paths_index, demo_type_index, demo_relations_index, device).to(device)
         optimizer_agent = torch.optim.Adam(ADAC_model.parameters(), lr=0.0001)
-        self.trainer = Trainer(args, ADAC_model, optimizer_agent, data)
+        self.trainer = Trainer(args, ADAC_model, optimizer_agent, data, device)
 
     def Train(self):
         print('training begining ...')
-        # AnchorKG_model.train()
+        # AnchorKG_model_bak.train()
         self.trainer.train()
 
     def Test(self):

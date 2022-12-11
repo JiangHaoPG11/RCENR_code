@@ -20,14 +20,15 @@ from KGAT_VAE_model.KGAT_VAE_Train_Test import *
 from VAE_model.VAE_Train_Test import *
 from LightGCN_VAE_model.LightGCN_VAE_Train_Test import *
 from LightGCL_model.LightGCL_Train_Test import *
+from RC4ERec_model.RC4ERec_Train_Test import *
 from DataLoad import load_data
 import argparse
 import os
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default='LightGCL')
-    parser.add_argument('--epoch', type=int, default= 1)
+    parser.add_argument('--mode', type=str, default='KPRN')
+    parser.add_argument('--epoch', type=int, default= 60)
     parser.add_argument('--user_size', type = int, default=100)
     parser.add_argument('--batch_size', type=int, default=50)
     parser.add_argument('--sample_size', type=int, default=5)
@@ -37,7 +38,7 @@ def parse_args():
     parser.add_argument('--title_size', type=int, default=400, help='新闻初始向量维数')
     parser.add_argument('--embedding_size', type=int, default=100, help='新闻和用户向量')
     parser.add_argument('--depth', type=list, default=[5,3,2], help='K-跳深度')
-    parser.add_argument('--checkpoint_dir', type=str, default='./AnchorKG_out/save_model/', help='模型保留位置')
+    parser.add_argument('--checkpoint_dir', type=str, default='./out/save_model/', help='模型保留位置')
 
     # RippleNet
     parser.add_argument('--ripplenet_n_hop', type=int, default=2, help='maximum hops')
@@ -55,6 +56,7 @@ def parse_args():
 
     # ADAC
     parser.add_argument('--ADAC_path_long', type=int, default=5, help='路径长度')
+    parser.add_argument('--ADAC_max_path', type=int, default=5, help='每个用户项目对的最大个数')
 
     # MRNN
     parser.add_argument('--category_num', type=int, default=15, help='类别向量总数')
@@ -122,7 +124,7 @@ def main(path, device):
         model = ADAC_Train_Test(args, data, device)
         model.Train()
         model.Test()
-    if args.mode == "KPNR":
+    if args.mode == "KPRN":
         model = KPRN_Train_Test(args, data, device)
         model.Train()
         model.Test()
@@ -192,6 +194,10 @@ def main(path, device):
         model.Test()
     if args.mode == "LightGCL":
         model = LightGCL_Train_Test(args, data, device)
+        model.Train()
+        model.Test()
+    if args.mode == "RC4ERec":
+        model = RC4ERec_Train_Test(args, data, device)
         model.Train()
         model.Test()
 if __name__ == '__main__':

@@ -13,7 +13,7 @@ class Trainer():
         self.KPRN_model = KPRN_model
         self.optimizer_kprn = optimizer_kprn
         self.save_period = 100
-        self.vaild_period = 40
+        self.vaild_period = 100
         self.train_dataloader = data[0]
         self.test_dataloader = data[1]
         self.vaild_dataloader = data[2]
@@ -22,22 +22,24 @@ class Trainer():
         self.testdata_size = data[-3]
         self.label_test = data[-2]
         self.bound_test = data[-1]
+ 
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     def optimize_kprn(self, rec_score, label):
-        rec_loss = F.cross_entropy(rec_score, torch.argmax(label, dim=1))
+        rec_loss = F.cross_entropy(rec_score, torch.argmax(label, dim=1).to(self.device))
         try:
             rec_auc = roc_auc_score(label.cpu().numpy(), F.softmax(rec_score.cpu(), dim=1).detach().numpy())
         except ValueError:
             rec_auc = 0.5
         self.optimizer_kprn.zero_grad()
         rec_loss.backward()
-        for name, param in self.KPRN_model.named_parameters():
-            print('%14s : %s' % (name, param.grad))
+        #for name, param in self.KPRN_model.named_parameters():
+        #    print('%14s : %s' % (name, param.grad))
         self.optimizer_kprn.step()
         return rec_loss, rec_auc
 
     def cal_auc(self, score, label):
-        rec_loss = F.cross_entropy(score, torch.argmax(label, dim=1))
+        rec_loss = F.cross_entropy(score, torch.argmax(label, dim=1).to(self.device))
         try:
             rec_auc = roc_auc_score(label.cpu().numpy(), score.cpu().detach().numpy())
         except ValueError:

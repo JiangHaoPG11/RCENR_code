@@ -62,18 +62,12 @@ class Trainer():
             q_values_step = q_values_steps[i]
             act_probs_step = act_probs_steps[i]
             critic_loss, actor_loss = self.Agent_model.step_update(act_probs_step, q_values_step, batch_reward)
-            #print(critic_loss)
-            #print(actor_loss)
+
             all_actor_loss.append(actor_loss.cpu().mean())
             all_critic_loss.append(critic_loss.cpu().mean())
             all_loss_list.append(actor_loss.cpu().mean())
             all_loss_list.append(critic_loss.cpu().mean())
 
-        #print('------')
-        #print(actor_loss)
-        #print(critic_loss)
-        print(rec_loss)
-        #print('------')
 
         all_loss_list.append(rec_loss)
         self.optimizer_agent.zero_grad()
@@ -81,7 +75,6 @@ class Trainer():
             loss = torch.stack(all_loss_list).sum()  # sum up all the loss
             loss.backward()
             self.optimizer_agent.step()
-            all_loss = all_loss + loss.data
         return loss
 
     def _train_epoch(self):
@@ -104,7 +97,7 @@ class Trainer():
             all_loss_list.append(all_loss.cpu().item())
             auc_list.append(rec_auc)
             pbar.update(self.args.batch_size)
-            torch.cuda.empty_cache()
+            #torch.cuda.empty_cache()
 
         pbar.close()
         return mean(all_loss_list), mean(auc_list)
@@ -155,18 +148,20 @@ class Trainer():
         pbar = tqdm(total= self.testdata_size)
         self.Agent_model.eval()
         pred_label_list = []
+        total_path_num = 0
         with no_grad():
             for data in self.test_dataloader:
                 candidate_newindex, user_index, user_clicked_newindex = data
-                path_nodes, path_relations, best_score, best_path = self.Agent_model.test(user_index, candidate_newindex, user_clicked_newindex)
+                path_num, path_nodes, path_relations, best_score, best_path = self.Agent_model.test(user_index, candidate_newindex, user_clicked_newindex)
+                total_path_num += path_num
                 best_score = best_score.view(self.args.batch_size, -1)
                 pred_label_list.extend(best_score.cpu().numpy())
                 pbar.update(self.args.batch_size)
             pred_label_list = np.vstack(pred_label_list)
             pbar.close()
         test_AUC, test_MRR, test_nDCG5, test_nDCG10 = evaluate(pred_label_list, self.label_test, self.bound_test)
-        print("test_AUC = %.4lf, test_MRR = %.4lf, test_nDCG5 = %.4lf, test_nDCG10 = %.4lf" %
-              (test_AUC, test_MRR, test_nDCG5, test_nDCG10))
+        print("test_AUC = %.4lf, test_MRR = %.4lf, test_nDCG5 = %.4lf, test_nDCG10 = %.4lf, path_num = %.4lf" %
+              (test_AUC, test_MRR, test_nDCG5, test_nDCG10, total_path_num))
 
 
 
