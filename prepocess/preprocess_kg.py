@@ -2,7 +2,7 @@ from utils.TransE_pytoch import *
 import pandas as pd
 from tqdm import tqdm
 news_entity_index_df = pd.read_csv('../Data/df/entity_index_df.csv')
-news_entity_embedding = np.load('../Data/metadata/new_entity_embedding.npy')
+news_entity_embedding = np.load('../Data/metadata/news_entity_embedding.npy')
 
 ### 获取KG
 def get_KG_construct(news_entity_index_df):
@@ -53,10 +53,10 @@ def get_onehop_neighbor( kg, news_entity_index_df):
              List(neigh_relation_adj)：对应新闻实体的邻居实体id列表
              entity_index_df ：添加邻居实体之后的df
     '''
-    print('get one_hop neighbor entities and select new graph......')
+    print('get one_hop neighbor entities and select news graph......')
     entity_id_list = news_entity_index_df['id'].values.tolist()
     total_entity_list = []
-    new_graph = []
+    news_graph = []
     total_relation_list = []
     loop = tqdm(total = len(entity_id_list))
     index1 = 1
@@ -67,12 +67,12 @@ def get_onehop_neighbor( kg, news_entity_index_df):
                 # print(index)
                 total_entity_list.append(kg[entity_id][index][0])
                 total_relation_list.append(kg[entity_id][index][1])
-                new_graph.append([entity_id, kg[entity_id][index][1], kg[entity_id][index][0]])
+                news_graph.append([entity_id, kg[entity_id][index][1], kg[entity_id][index][0]])
         loop.update(1)
     loop.close()
     total_entity_list = entity_id_list + total_entity_list
 
-    return new_graph, total_entity_list, total_relation_list
+    return news_graph, total_entity_list, total_relation_list
 
 # def select_graph(graph, news_entity_index_df, total_entity_list):
 #     print('select one hop graph......')
@@ -80,14 +80,14 @@ def get_onehop_neighbor( kg, news_entity_index_df):
 #     total_entity = news_entity_id_list + total_entity_list
 #     entity_id_list = news_entity_id_list
 #     relation_id_list = []
-#     new_graph = []
+#     news_graph = []
 #     for triplet in graph:
 #         if (triplet[0] in total_entity) or (triplet[2] in total_entity):
-#             new_graph.append([triplet[0], triplet[1], triplet[2]])
+#             news_graph.append([triplet[0], triplet[1], triplet[2]])
 #             entity_id_list.append(triplet[0])
 #             entity_id_list.append(triplet[2])
 #             relation_id_list.append(triplet[1])
-#     return new_graph, entity_id_list, relation_id_list
+#     return news_graph, entity_id_list, relation_id_list
 
 
 def map_graph_to_index(graph, entity_id_list, relation_id_list):
@@ -157,7 +157,7 @@ def get_transE_embedding(entity_index_list, relation_index_list, graph_index, ne
 
 if __name__ == "__main__":
     graph, kg = get_KG_construct(news_entity_index_df)
-    new_graph, total_entity_list, total_relation_list = get_onehop_neighbor(kg, news_entity_index_df)
-    entity_index_list,  relation_index_list, graph_index, news_entity_num = map_graph_to_index(new_graph, total_entity_list, total_relation_list)
-    get_transE_embedding (entity_index_list, relation_index_list, graph_index, news_entity_num, news_entity_embedding)
+    news_graph, total_entity_list, total_relation_list = get_onehop_neighbor(kg, news_entity_index_df)
+    entity_index_list,  relation_index_list, graph_index, news_entity_num = map_graph_to_index(news_graph, total_entity_list, total_relation_list)
+    get_transE_embedding(entity_index_list, relation_index_list, graph_index, news_entity_num, news_entity_embedding)
 

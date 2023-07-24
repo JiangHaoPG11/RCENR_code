@@ -1,5 +1,4 @@
 import os
-
 import numpy as np
 import pandas as pd
 import torch.nn.functional as F
@@ -34,10 +33,8 @@ class Trainer():
         self.testdata_size = data[-3]
         self.label_test = data[-2]
         self.bound_test = data[-1]
-
         self.criterion = nn.CrossEntropyLoss(reduce=False)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") 
-        #self.device = torch.device("cpu")
 
     def get_batch_reward(self, step_reward):
         batch_rewards = step_reward  # [[bz, d(1-hop) * 1], [bz, d(1-hop) * d(2-hop)], [bz, d(1-hop) * d(2-hop) * d(3-hop)]]
@@ -54,8 +51,6 @@ class Trainer():
             print("error, layer num not match")
 
         for i in range(1, num_steps1):
-            # print(torch.mean(batch_rewards[num_steps1 - i], dim=-1).shape)
-            # print(batch_rewards[num_steps1 - i - 1].shape)
             batch_rewards[num_steps1 - i - 1] = batch_rewards[num_steps1 - i - 1] + 0.1 * torch.mean(batch_rewards[num_steps1 - i], dim=-1)
 
         if len(self.args.depth) == 3:
@@ -75,101 +70,11 @@ class Trainer():
             auc = 0.5
         return auc
 
-    # def optimize_recommender(self, rec_score, label):
-    #     rec_loss = self.criterion(rec_score, torch.argmax(label, dim=1).to(self.device))
-    #     rec_loss_mean = torch.mean(rec_loss)
-    #     #rec_loss = F.cross_entropy(rec_score, torch.argmax(label, dim=1).to(self.device))
-    #     #rec_loss.requires_grad_(True)
-    #
-    #     self.optimizer_recommender.zero_grad()
-    #     rec_loss_mean.backward(retain_graph=True)
-    #     # for name, param in self.model_recommender.named_parameters():
-    #     #     print('%14s : %s' % (name, param.grad))
-    #     self.optimizer_recommender.step()
-    #     return rec_loss
-    #
-    # def optimize_reasoner(self, rea_score, overlap_score, label):
-    #     #rea_loss = self.criterion(rea_score, torch.argmax(label, dim=1))
-    #     rea_loss = self.criterion(rea_score, torch.argmax(label, dim=1).to(self.device))
-    #     overlap_loss = self.criterion(overlap_score, torch.argmax(label, dim=1).to(self.device))
-    #     rea_loss_mean = torch.mean(rea_loss)
-    #     #rea_loss = F.cross_entropy(rea_score, torch.argmax(label, dim=1).to(self.device))
-    #     overlap_loss = F.cross_entropy(overlap_score, torch.argmax(label, dim=1).to(self.device))
-    #     # rea_loss.requires_grad_(True)
-    #     self.optimizer_reasoner.zero_grad()
-    #     rea_loss_mean.backward(retain_graph=True)
-    #    # for name, param in self.model_reasoner.named_parameters():
-    #    #     print('%14s : %s' % (name, param.grad))
-    #     self.optimizer_reasoner.step()
-    #     return rea_loss, overlap_loss
-    #
-    #
-    # def optimize_subgraph(self,
-    #                       batch_rewards1, q_values_steps1, act_probs_steps1,
-    #                       batch_rewards2, q_values_steps2, act_probs_steps2,
-    #                       rec_loss, reasoning_loss):
-    #     all_loss_list = []
-    #     actor_loss_list = []
-    #     critic_loss_list = []
-    #     news1_actor_loss = []
-    #     news1_critic_loss = []
-    #     #- rec_loss.detach(),
-    #     #- reasoning_loss.detach()
-    #     for i in range(3):
-    #         batch_reward1 = batch_rewards1[i]
-    #         q_values_step1 = q_values_steps1[i]
-    #         act_probs_step1 = act_probs_steps1[i]
-    #         critic_loss1, actor_loss1 = self.subgraph_model.step_update(act_probs_step1, q_values_step1,
-    #                                                                     batch_reward1,
-    #                                                                     - rec_loss.detch(),
-    #                                                                     - reasoning_loss.detch(),
-    #                                                                     0.7,
-    #                                                                     0.3)
-    #         news1_actor_loss.append(actor_loss1.mean())
-    #         news1_critic_loss.append(critic_loss1.mean())
-    #         actor_loss_list.append(actor_loss1.mean())
-    #         critic_loss_list.append(critic_loss1.mean())
-    #         all_loss_list.append(actor_loss1.mean())
-    #         all_loss_list.append(critic_loss1.mean())
-    #
-    #     news2_actor_loss = []
-    #     news2_critic_loss = []
-    #     for i in range(3):
-    #         batch_reward2 = batch_rewards2[i]
-    #         q_values_step2 = q_values_steps2[i]
-    #         act_probs_step2 = act_probs_steps2[i]
-    #         critic_loss2, actor_loss2 = self.subgraph_model.step_update(act_probs_step2, q_values_step2,
-    #                                                                     batch_reward2,
-    #                                                                     - rec_loss.detch(),
-    #                                                                     - reasoning_loss.detch(),
-    #                                                                     0.7,
-    #                                                                     0.3)
-    #         news2_actor_loss.append(actor_loss2.mean())
-    #         news2_critic_loss.append(critic_loss2.mean())
-    #         actor_loss_list.append(actor_loss2.mean())
-    #         critic_loss_list.append(critic_loss2.mean())
-    #         all_loss_list.append(actor_loss2.mean())
-    #         all_loss_list.append(critic_loss2.mean())
-    #
-    #     self.optimizer_subgraph.zero_grad()
-    #     if all_loss_list != []:
-    #         loss = torch.stack(all_loss_list).sum()  # sum up all the loss
-    #         print(loss)
-    #         loss.backward()
-    #         # for name, param in self.subgraph_model.named_parameters():
-    #         #     print('%14s : %s' % (name, param.grad))
-    #         self.optimizer_subgraph.step()
-    #         #anchor_all_loss = anchor_all_loss + loss.data
-    #     return loss
-
     def optimize_recommender(self, rec_score, label):
         rec_loss = self.criterion(rec_score, torch.argmax(label, dim=1).to(self.device))
         rec_loss_mean = torch.mean(rec_loss)
-
-        #rec_loss_mean = torch.nn.functional.cross_entropy(rec_score, torch.argmax(label, dim=1).to(self.device))
         self.optimizer_recommender.zero_grad()
         rec_loss_mean.backward(retain_graph=True)
-        #rec_loss_mean.backward()
         #for name, param in self.model_recommender.named_parameters():
         #    print('%14s : %s' % (name, param.grad))
         self.optimizer_recommender.step()
@@ -179,11 +84,8 @@ class Trainer():
         rea_loss = self.criterion(rea_score, torch.argmax(label, dim=1).to(self.device))
         overlap_loss = self.criterion(overlap_score, torch.argmax(label, dim=1).to(self.device))
         rea_loss_mean = torch.mean(rea_loss)
-
-        #rea_loss_mean = torch.nn.functional.cross_entropy(rea_score,torch.argmax(label, dim=1).to(self.device))
         self.optimizer_reasoner.zero_grad()
         rea_loss_mean.backward(retain_graph=True)
-        #rea_loss_mean.backward()
         #for name, param in self.model_reasoner.named_parameters():
         #    print('%14s : %s' % (name, param.grad))
         self.optimizer_reasoner.step()
@@ -238,7 +140,6 @@ class Trainer():
         if all_loss_list != []:
             loss = torch.stack(all_loss_list).sum()  # sum up all the loss
             loss.backward(retain_graph=True)
-            #loss.backward()
             #for name, param in self.subgraph_model.named_parameters():
             #    print('%14s : %s' % (name, param.grad))
             self.optimizer_subgraph.step()
@@ -294,7 +195,7 @@ class Trainer():
             auc_list.append(rec_auc)
 
             pbar.update(self.args.batch_size)
-            print("subgraph loss:{}---recommend loss：{}---reason loss：{}-------path num：{} ---rec auc：{} ".
+            print("subgraph loss:{}---recommend loss:{}---reason loss:{}-------path num:{} ---rec auc:{} ".
                   format(str(subgraph_loss.cpu().item()),  str(torch.mean(rec_loss).cpu().item()), str(torch.mean(rea_loss).cpu().item()), str(path_num), str(rec_auc)))
            # torch.cuda.empty_cache()
 
@@ -338,13 +239,13 @@ class Trainer():
     def train(self):
         for epoch in range(1, self.args.epoch+1):
             subgraph_loss, rec_loss, rea_loss, rec_auc, overlap_loss, all_path_num, all_overlap_num = self._train_epoch(epoch)
-            print("epoch：{}---subgraph loss:{}---recommend loss：{}---reason loss：{}-----path num：{} ---nodes num：{}--rec auc：{} ".
+            print("epoch:{}---subgraph loss:{}---recommend loss:{}---reason loss:{}-----path num:{} ---nodes num:{}--rec auc:{} ".
                   format(epoch, str(subgraph_loss),  str(rec_loss), str(rea_loss), str(all_path_num), str(all_overlap_num), str(rec_auc)))
 
             if epoch % self.vaild_period == 10:
                 print('start vaild ...')
                 rec_auc = self._vaild_epoch()
-                print("epoch：{}---vaild auc：{} ".format(epoch, str(rec_auc)))
+                print("epoch:{}---vaild auc:{} ".format(epoch, str(rec_auc)))
 
             if epoch % self.save_period == 60:
                 self._save_checkpoint(epoch)
@@ -361,10 +262,10 @@ class Trainer():
                     user_graph_nodes.extend(self.subgraph_model.get_subgraph_list(self.subgraph_model(user_index, user_clicked_newindex, candidate_newindex)[8],
                                                                                   self.subgraph_model(user_index, user_clicked_newindex, candidate_newindex)[9],
                                                                                   self.args.batch_size))
-                    news_graph_file = open("./MRNNRL_out/news_file_" + str(epoch) + ".tsv", 'w', encoding='utf-8')
+                    news_graph_file = open("./RCENR_out/news_file_" + str(epoch) + ".tsv", 'w', encoding='utf-8')
                     for i in range(self.args.batch_size):
                         news_graph_file.write(candidate_newindex[i] + '\t' + ' '.join(list(set(news_graph_nodes[i]))) + '\n')
-                    user_graph_file = open("./MRNNRL_out/user_file_" + str(epoch) + ".tsv", 'w', encoding='utf-8')
+                    user_graph_file = open("./RCENR_out/user_file_" + str(epoch) + ".tsv", 'w', encoding='utf-8')
                     for i in range(self.args.batch_size):
                         user_graph_file.write(user_clicked_newindex['item1'][i] + '\t' + ' '.join(list(user_graph_nodes[i])) + '\n')
 
@@ -436,9 +337,9 @@ class Trainer():
             pred_label_list = np.vstack(pred_label_list)
             pbar.close()
 
-        print('测试集推理路径：{}'.format(all_path_num))
+        print('reasoning paths num:{}'.format(all_path_num))
         # 存储预测结果
-        folder_path = '../predict/MRNNRL/'
+        folder_path = '../predict/RCENR/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
         predict_df = pd.DataFrame()

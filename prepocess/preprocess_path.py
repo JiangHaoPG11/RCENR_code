@@ -16,7 +16,7 @@ def load_news_entity(news_entity_index):
     return news_entity_dict
 
 # 构建KG的环境（加入了新闻节点和新闻实体）
-def build_KG_network(news_entity_dict, user_clicked_newindex):
+def build_KG_network(news_entity_dict, user_clicked_newsindex):
     print('constructing kg env ...')
     print('adding news to KG')
     network = nx.DiGraph()
@@ -28,8 +28,8 @@ def build_KG_network(news_entity_dict, user_clicked_newindex):
                 network.add_edge(entity, newsid, label = "outnews", weight = 0)
 
     print('adding users to KG')
-    for i in range(user_clicked_newindex.shape[0]):
-        single_user_clicked = user_clicked_newindex[i, :]
+    for i in range(user_clicked_newsindex.shape[0]):
+        single_user_clicked = user_clicked_newsindex[i, :]
         for clicked_index in single_user_clicked:
             network.add_edge('user' + str(i), 'news' + str(clicked_index.item()), label = "inuser", weight = 1)
             network.add_edge('news' + str(clicked_index.item()), 'user' + str(i), label = "outuser", weight = 1)
@@ -50,8 +50,8 @@ def build_KG_network(news_entity_dict, user_clicked_newindex):
 
 def bulid_news_network(network):
     print('bulid news network')
-    news_category_index = np.load('../Data/metadata/new_category_index.npy')
-    news_subcategory_index = np.load('../Data/metadata/new_subcategory_index.npy')
+    news_category_index = np.load('../Data/metadata/news_category_index.npy')
+    news_subcategory_index = np.load('../Data/metadata/news_subcategory_index.npy')
     news_category_index = news_category_index.tolist()
     news_subcategory_index = news_subcategory_index.tolist()
     for i in range(len(news_category_index)):
@@ -138,15 +138,15 @@ def adac_get_paths(args, kg_env, user_index, ):
     total_relations_index = []
     total_type_index = []
 
-    for m in range(user_clicked_newindex.shape[1]):
+    for m in range(user_clicked_newsindex.shape[1]):
         paths_index = []
         relations_index = []
         type_index = []
-        for j in range(user_clicked_newindex.shape[0]):
+        for j in range(user_clicked_newsindex.shape[0]):
             total_paths.append([])
             total_relations.append([])
             index = 0
-            for path in nx.all_simple_paths(kg_env, source='user' + str(user_index[j].item()), target='news' + str(user_clicked_newindex[j, m].item()), cutoff= args.ADAC_path_long):
+            for path in nx.all_simple_paths(kg_env, source='user' + str(user_index[j].item()), target='news' + str(user_clicked_newsindex[j, m].item()), cutoff= args.ADAC_path_long):
                 index += 1
                 if index > args.ADAC_max_path:
                     break
@@ -162,7 +162,7 @@ def adac_get_paths(args, kg_env, user_index, ):
             if len(total_paths[-1]) < args.ADAC_max_path:
                 for i in range(args.ADAC_max_path - len(total_paths[-1])):
                     total_paths[-1].append(
-                        ['user' + str(user_index[j].item()), 0, 0, 0, 0, 'news' + str(user_clicked_newindex[j, m].item())])
+                        ['user' + str(user_index[j].item()), 0, 0, 0, 0, 'news' + str(user_clicked_newsindex[j, m].item())])
                     total_relations[-1].append([0, 0, 0, 0, 0, 0])
 
             paths_index.append([])
@@ -205,13 +205,13 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    news_entity_index = np.load('../Data/metadata/new_entity_index.npy')
+    news_entity_index = np.load('../Data/metadata/news_entity_index.npy')
     user_index = np.load('../Data/metadata/user_index.npy')
-    candidate_news = np.load('../Data/metadata/candidate_newindex.npy')
-    user_clicked_newindex = np.load('../Data/metadata/user_clicked_newindex.npy')
+    candidate_news = np.load('../Data/metadata/candidate_newsindex.npy')
+    user_clicked_newsindex = np.load('../Data/metadata/user_clicked_newsindex.npy')
     args = parse_args()
     news_entity_dict = load_news_entity(news_entity_index)
-    kg_env = build_KG_network(news_entity_dict, user_clicked_newindex)
+    kg_env = build_KG_network(news_entity_dict, user_clicked_newsindex)
     news_network = bulid_news_network(kg_env)
     kprn_get_paths(args, kg_env, user_index, candidate_news)
     adac_get_paths(args, kg_env, user_index)

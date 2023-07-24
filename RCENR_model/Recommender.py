@@ -136,7 +136,6 @@ class Recommender(torch.nn.Module):
             news_entities.append([])
             for j in range(newsids.shape[1]):
                 news_entities[-1].append([])
-                #news_entities[-1][-1].append(self.news_entity_dict[int(newsids[i, j])][:self.args.news_entity_size])
                 news_entities[-1][-1].append(self.news_entity_dict[int(newsids[i, j])][:])
         return np.array(news_entities)
 
@@ -165,17 +164,18 @@ class Recommender(torch.nn.Module):
                 user_rep = user_rep_one
             else:
                 user_rep = torch.cat([user_rep, user_rep_one], dim=0)
-        score = torch.sum(news_rep * user_rep, dim = -1)
-        return user_rep, news_rep, score
+        return user_rep, news_rep
 
     def forward(self, candidate_news, user_clicked_news_index, news_graph, user_graph):
         weight = 0.8
         self.node_embedding = self._reconstruct_node_embedding()
         candidate_news = candidate_news.to(self.device)
         user_clicked_news_index = user_clicked_news_index.to(self.device)
+        
         # 新闻用户表征
         user_rep, news_rep, score = self.get_user_news_rep(candidate_news, user_clicked_news_index)
-        
+        score = torch.sum(news_rep * user_rep, dim = -1)
+
         # 子图嵌入
         news_graph_embedding = self.get_graph_embedding(news_graph, mode="news") # bz, news_dim
         user_graph_embedding = self.get_graph_embedding(user_graph, mode="user") # bz, news_dim

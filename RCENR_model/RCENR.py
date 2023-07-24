@@ -4,6 +4,7 @@ import numpy as np
 from torch.distributions import Categorical
 import torch.nn.functional as F
 import random
+
 class Net(torch.nn.Module):
     def __init__(self, device):
         super(Net, self).__init__()
@@ -39,14 +40,14 @@ class Net(torch.nn.Module):
         q_actions = self.sigmoid(self.critic_l3(critic_out))
         return act_probs, q_actions
 
-class RC4ERec(torch.nn.Module):
+class RCENR(torch.nn.Module):
 
     def __init__(self, args, news_entity_dict, entity_news_dict, user_click_dict,
                  news_category_index, news_subcategory_index, category_news_dict, subcategory_news_dict,
                  news_title_embedding, entity_embedding, relation_embedding,
                  entity_adj, relation_adj, neibor_embedding, neibor_num, device):
 
-        super(RC4ERec, self).__init__()
+        super(RCENR, self).__init__()
         self.args = args
         self.device = device
         self.entity_num = entity_embedding.shape[0]
@@ -198,55 +199,6 @@ class RC4ERec(torch.nn.Module):
         dot_rewards = F.softmax(torch.sum(origin_embedding * (graph_embedding + node_embedding), dim = -1), dim = -1)
         graph_embedding = (graph_embedding + node_embedding).to(self.device)
         return dot_rewards, graph_embedding
-
-    # # 代改（暂时不添加）
-    # def get_hit_rewards_batch(self, user_index, news_id_batch, node_type_input_batch, node_id_input_batch = None):
-    #     hit_rewards = []
-    #     hit_rewards_weak = []
-    #     neibor = None
-    #     if node_id_input_batch != None:
-    #         for i in range(len(news_id_batch)):
-    #             hit_rewards.append([])
-    #             hit_rewards_weak.append([])
-    #             for j in range(len(node_id_input_batch[i])):
-    #                 if int(node_type_input_batch[i][j].data.cpu().numpy()) == 2:
-    #                     if int(node_id_input_batch[i][j].data.cpu().numpy()) in self.entity_news_dict \
-    #                             and news_id_batch[i] in self.user_click_dict:
-    #                         neibor = set(self.entity_news_dict[int(node_id_input_batch[i][j].data.cpu().numpy())]).discard(news_id_batch[i])
-    #                         news_hit_neibor = self.user_click_dict[user_index[i].cpu().item()]
-    #
-    #                 if int(node_type_input_batch[i][j].data.cpu().numpy()) == 3:
-    #                     if int(node_id_input_batch[i][j].data.cpu().numpy()) in self.category_news_dict \
-    #                             and news_id_batch[i] in self.user_click_dict:
-    #                         neibor = set(self.category_news_dict[int(node_id_input_batch[i][j].data.cpu().numpy())]).discard(news_id_batch[i])
-    #                         news_hit_neibor = self.user_click_dict[user_index[i].cpu().item()]
-    #
-    #                 if int(node_type_input_batch[i][j].data.cpu().numpy()) == 3:
-    #                     if int(node_id_input_batch[i][j].data.cpu().numpy()) in self.subcategory_news_dict \
-    #                             and news_id_batch[i] in self.user_click_dict:
-    #                         neibor = set(self.subcategory_news_dict[int(node_id_input_batch[i][j].data.cpu().numpy())]).discard(news_id_batch[i])
-    #                         news_hit_neibor = self.user_click_dict[user_index[i].cpu().item()]
-    #                     if neibor != None:
-    #                         if len(neibor & news_hit_neibor) > 0:
-    #                             print("hit")
-    #                             hit_rewards[-1].append(1.0)
-    #                         else:
-    #                             hit_rewards[-1].append(0.0)
-    #                     else:
-    #                         hit_rewards[-1].append(0.0)
-    #                 else:
-    #                     hit_rewards[-1].append(0.0)
-    #     else:
-    #         for i in range(len(news_id_batch)):
-    #             hit_rewards.append([])
-    #             hit_rewards_weak.append([])
-    #             for news_id in news_id_batch[i]:
-    #                 news_hit_neibor = self.user_click_dict[user_index[i].cpu().item()]
-    #                 if news_id in news_hit_neibor:
-    #                     hit_rewards[-1].append(1.0)
-    #                 else:
-    #                     hit_rewards[-1].append(0.0)
-    #     return torch.FloatTensor(hit_rewards).to(self.device)
 
     def get_outer_constrast_reward(self, graph, depth, nodes_embedding, mode):
         if depth == 1:

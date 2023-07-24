@@ -1,11 +1,12 @@
-from RC4ERec_model.RC4ERec_Train_Test import *
+from RCENR_model.RCENR_Train_Test import *
 from DataLoad import load_data
 import argparse
 import os
 
 def parse_args():
+    # for demo
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default='KPRN')
+    parser.add_argument('--mode', type=str, default='RCENR')
     parser.add_argument('--epoch', type=int, default= 60)
     parser.add_argument('--user_size', type = int, default=100)
     parser.add_argument('--batch_size', type=int, default=50)
@@ -41,10 +42,11 @@ def parse_args():
 def main(path, device):
     args = parse_args()
     data = load_data(args,path)
-    if args.mode == "RC4ERec":
-        model = RC4ERec_Train_Test(args, data, device)
+    if args.mode == "RCENR":
+        model = RCENR_Train_Test(args, data, device)
         model.Train()
         model.Test()
+
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     path = os.path.dirname(os.getcwd())

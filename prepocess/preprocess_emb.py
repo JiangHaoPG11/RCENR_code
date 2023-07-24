@@ -25,7 +25,7 @@ def get_word_embedding(model):
     np.save('../Data/metadata/new_title_word_embedding.npy', word_embedding)
     word_index_df['word_embedding'] = word_embedding_list
     word_index_df.to_csv('../Data/df/word_index_df.csv',index = False)
-    print(word_index_df)
+
 ## 获取主题嵌入
 def get_category_embedding(model):
     '''
@@ -50,7 +50,7 @@ def get_category_embedding(model):
     np.save('../Data/metadata/new_category_embedding.npy', category_embedding)
     category_index_df['category_embedding'] = category_embedding_list
     category_index_df.to_csv('../Data/df/category_index_df.csv',index = False)
-    print(category_index_df)
+
 ## 获取子主题嵌入
 def get_subcategory_embedding(model):
     '''
@@ -75,13 +75,13 @@ def get_subcategory_embedding(model):
     np.save('../Data/metadata/new_subcategory_embedding.npy', subcategory_embedding)
     subcategory_index_df['subcategory_embedding'] = subcategory_embedding_list
     subcategory_index_df.to_csv('../Data/df/subcategory_index_df.csv',index = False)
-    print(subcategory_index_df)
+    
 if __name__ == "__main__":
     ## 加载模型
     model = gensim.models.KeyedVectors.load_word2vec_format('../GoogleNews-vectors-negative300.bin.gz',binary=True)
     ##  获取词嵌入
     get_word_embedding(model)
-    # ## 获取主题嵌入
-    # get_category_embedding(model)
-    # ## 获取子主题嵌入
-    # get_subcategory_embedding(model)
+    ## 获取主题嵌入
+    get_category_embedding(model)
+    ## 获取子主题嵌入
+    get_subcategory_embedding(model)

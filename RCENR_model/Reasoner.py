@@ -52,7 +52,7 @@ class Reasoner(torch.nn.Module):
             graph_list_flat.append([])
             graph_list.append([[], [], []])
         for i in range(len(graph_layers)):
-            for j in range(len(graph_layers[i])): # j代表每个batch有多少用户
+            for j in range(len(graph_layers[i])): 
                 for k in range(len(graph_layers[i][j])):
                     graph_list[j][i].append(int(graph_layers[i][j][k].data.cpu().numpy()))
                     graph_list_flat[j].append(int(graph_layers[i][j][k].data.cpu().numpy()))
@@ -187,8 +187,8 @@ class Reasoner(torch.nn.Module):
                 total_path_num += path_num
             return total_path_num
         total_path_num = _cal_total_path_num(path_num_list)
-            # print(reasoning_paths[-1])
-            # print(reasoning_edges[-1])
+        # print(reasoning_paths[-1])
+        # print(reasoning_edges[-1])
 
         return reasoning_paths, reasoning_edges, total_path_num, path_num_list
 
@@ -292,18 +292,7 @@ class Reasoner(torch.nn.Module):
                 path_input_total = path_scores
             else:
                 path_input_total = torch.cat([path_input_total, path_scores], dim=0)
-            #     output, _ = self.gru(path_node_embeddings + path_edge_embeddings)
-            #     if j == 0:
-            #         input = output[-1]
-            #     else:
-            #         input = output[-1] + input
-            # if i == 0:
-            #     path_input = input
-            # else:
-            #     path_input = torch.cat([path_input, input], dim=0)
 
-        # path_score = self.gru_output_layer2(self.elu(self.gru_output_layer1(torch.squeeze(path_input))))
-        # path_score = path_score.squeeze()
         # 计算路径得分 和 路径重叠实体
         reason_qua = torch.div(path_input_total, (torch.log((np.e + news_graph_num + user_graph_graph_num).float())))
         reason_num = torch.div(overlap_entity_num, (torch.log((np.e + news_graph_num + user_graph_graph_num).float())))
